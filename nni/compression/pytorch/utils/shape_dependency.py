@@ -87,6 +87,11 @@ def reshape_break_channel_dependency(op_node):
     out_shape = op_node.auxiliary['out_shape']
     in_channel = in_shape[1]
     out_channel = out_shape[1]
+
+    # hard code for pruning sddnet
+    if op_node.name == '.aten::view.279' or op_node.name == '.aten::view.278':
+        return False
+
     return in_channel != out_channel
 
 
