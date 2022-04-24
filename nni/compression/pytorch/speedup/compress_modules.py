@@ -515,7 +515,8 @@ def replace_convtranspose2d(convtrans, masks):
                                              dilation=convtrans.dilation,
                                              groups=new_groups,
                                              bias=convtrans.bias is not None,
-                                             padding_mode=convtrans.padding_mode)
+                                             padding_mode=convtrans.padding_mode,
+                                             output_padding=covtrans.output_padding)
     new_convtrans.to(convtrans.weight.device)
     new_convtrans.weight.copy_(tmp_weight)
     if convtrans.bias is not None:

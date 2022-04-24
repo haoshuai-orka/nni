@@ -100,7 +100,7 @@ class StructuredWeightMasker(WeightMasker):
             how many filters we should prune
         """
         msg = 'module type {} is not supported!'.format(wrapper.type)
-        assert wrapper.type == 'Conv2d', msg
+        assert wrapper.type == 'Conv2d' or wrapper.type == 'ConvTranspose2d', msg
         weight = wrapper.module.weight.data
         bias = None
         if hasattr(wrapper.module, 'bias') and wrapper.module.bias is not None:
@@ -119,7 +119,11 @@ class StructuredWeightMasker(WeightMasker):
             mask_bias = None
         mask = {'weight_mask': mask_weight, 'bias_mask': mask_bias}
 
-        num_total = weight.size(0)
+        if wrapper.type == 'Conv2d':
+            num_total = weight.size(0)
+        elif wrapper.type == 'ConvTranspose2d':
+            num_total = weight.size(1)
+
         num_prune = int(num_total * sparsity)
         if self.preserve_round > 1:
             num_preserve = num_total - num_prune
@@ -186,7 +190,7 @@ class StructuredWeightMasker(WeightMasker):
         # check the type of the input wrappers
         for _w in wrappers:
             msg = 'module type {} is not supported!'.format(_w.type)
-            assert _w.type == 'Conv2d', msg
+            assert _w.type == 'Conv2d' or _w.type == 'ConvTranspose2d', msg
         # Among the dependent layers, the layer with smallest
         # sparsity determines the final benefit of the speedup
         # module. To better harvest the speed benefit, we need
@@ -209,7 +213,12 @@ class StructuredWeightMasker(WeightMasker):
         # the max_group is lower than the channel_count, because
         # the number of the filter is always divisible by the number of the group
         max_group = np.lcm.reduce(groups)
-        channel_count = wrappers[0].module.weight.data.size(0)
+
+        if wrappers[0].type == 'Conv2d':
+            channel_count = wrappers[0].module.weight.data.size(0)
+        elif wrappers[0].type == 'ConvTranspose2d':
+            channel_count = wrappers[0].module.weight.data.size(1)
+
         device = wrappers[0].module.weight.device
         channel_sum = torch.zeros(channel_count).to(device)
         for _w, _w_idx in zip(wrappers, wrappers_idx):
@@ -368,8 +377,14 @@ class L1FilterPrunerMasker(StructuredWeightMasker):
             w_abs_structured = w_abs_structured * channel_masks
         threshold = torch.topk(w_abs_structured.view(-1),
                                num_prune, largest=False)[0].max()
-        mask_weight = torch.gt(w_abs_structured, threshold)[
-            :, None, None, None].expand_as(weight).type_as(weight)
+
+        if wrapper.type == 'Conv2d':
+            mask_weight = torch.gt(w_abs_structured, threshold)[
+                :, None, None, None].expand_as(weight).type_as(weight)
+        elif wrapper.type == 'ConvTranspose2d':
+            mask_weight = torch.permute(torch.gt(w_abs_structured, threshold)[
+                                        :, None, None, None], (1, 0, 2, 3)).expand_as(weight).type_as(weight)
+
         mask_bias = torch.gt(w_abs_structured, threshold).type_as(
             weight).detach() if base_mask['bias_mask'] is not None else None
 
@@ -377,7 +392,12 @@ class L1FilterPrunerMasker(StructuredWeightMasker):
 
     def get_channel_sum(self, wrapper, wrapper_idx):
         weight = wrapper.module.weight.data
-        filters = weight.shape[0]
+
+        if wrapper.type == 'Conv2d':
+            filters = weight.shape[0]
+        elif wrapper.type == 'ConvTranspose2d':
+            filters = weight.shape[1]
+
         w_abs = weight.abs()
         w_abs_structured = w_abs.view(filters, -1).sum(dim=1)
         return w_abs_structured

@@ -296,6 +296,11 @@ class ChannelMaskConflict(MaskFix):
                         new_mask[:, merged_index] = 1.
                 elif type(m).__name__ == 'BatchNorm2d':
                     new_mask = merged_channel_mask.type_as(orig_mask)
+                elif type(m).__name__ == 'ConvTranspose2d':
+                    if self.conv_prune_dim == 1:
+                        new_mask[merged_index, :, :, :] = 1.
+                    else:
+                        new_mask[:, merged_index, :, :] = 1.
                 else:
                     raise RuntimeError(
                         f'unsupported module type: {type(m).__name__}')
